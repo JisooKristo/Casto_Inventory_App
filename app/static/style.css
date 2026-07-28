@@ -295,6 +295,10 @@ td {
   white-space: nowrap;
 }
 
+td:last-child {
+  text-align: center;
+}
+
 tbody tr:hover {
   background: rgba(15, 118, 110, 0.04);
 }
@@ -317,6 +321,30 @@ tbody tr:hover {
   color: var(--muted);
   padding: 20px 0;
   font-style: italic;
+}
+
+.remove-btn {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(180, 35, 24, 0.22);
+  border-radius: 999px;
+  background: rgba(180, 35, 24, 0.08);
+  color: var(--danger);
+  font-size: 1.1rem;
+  font-weight: 900;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+
+.remove-btn:hover {
+  background: rgba(180, 35, 24, 0.14);
+}
+
+.remove-btn:active {
+  transform: scale(0.94);
 }
 
 /* 5-Item Pagination Control Bar */

@@ -59,6 +59,7 @@
               <th>Location</th>
               <th>Date</th>
               <th>Seq</th>
+              <th>Remove</th>
             </tr>
           </thead>
           <tbody id="session-body"></tbody>
@@ -148,7 +149,7 @@
       const pageItems = allRecords.slice(start, end);
 
       if (pageItems.length === 0) {
-        sessionBody.innerHTML = `<tr><td colspan="5" class="empty-state">No tags scanned yet.</td></tr>`;
+        sessionBody.innerHTML = `<tr><td colspan="6" class="empty-state">No tags scanned yet.</td></tr>`;
       } else {
         pageItems.forEach((record) => {
           const row = document.createElement('tr');
@@ -158,6 +159,17 @@
             <td>${record.Location}</td>
             <td>${record['Date Acquired']}</td>
             <td><span class="seq-badge">#${record['Sequence Number']}</span></td>
+            <td>
+              <button
+                type="button"
+                class="remove-btn"
+                data-qr="${record['Item Name']}"
+                aria-label="Remove ${record['Item Name']} from recent scans"
+                title="Remove"
+              >
+                &minus;
+              </button>
+            </td>
           `;
           sessionBody.appendChild(row);
         });
@@ -179,6 +191,33 @@
       allRecords.forEach(rec => processedCodes.add(rec['Item Name']));
       currentPage = 1;
       renderTable();
+    }
+
+    async function removeScan(qrCode) {
+      const response = await fetch('/api/remove-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ qr_code: qrCode })
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.detail || 'Unable to remove scan.');
+      }
+
+      allRecords = allRecords.filter((record) => record['Item Name'] !== qrCode);
+      processedCodes.delete(qrCode);
+
+      if (allRecords.length > 0) {
+        const totalPages = Math.ceil(allRecords.length / PAGE_SIZE);
+        currentPage = Math.min(currentPage, totalPages);
+      } else {
+        currentPage = 1;
+      }
+
+      renderTable();
+      triggerFeedback('Removed', 'success');
+      return payload;
     }
 
     async function handleScanSuccess(decodedText) {
@@ -260,6 +299,21 @@
       if (currentPage < totalPages) {
         currentPage++;
         renderTable();
+      }
+    });
+
+    sessionBody.addEventListener('click', async (event) => {
+      const button = event.target.closest('.remove-btn');
+      if (!button) return;
+
+      const qrCode = button.dataset.qr;
+      if (!qrCode) return;
+
+      try {
+        await removeScan(qrCode);
+      } catch (error) {
+        triggerFeedback(error.message, 'error');
+        setStatus('Remove failed', 'error');
       }
     });
 

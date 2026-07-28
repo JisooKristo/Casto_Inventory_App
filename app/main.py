@@ -33,6 +33,10 @@ class ScanRequest(BaseModel):
     qr_code: str = Field(min_length=1)
 
 
+class RemoveScanRequest(BaseModel):
+    qr_code: str = Field(min_length=1)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "index.html")
@@ -73,6 +77,28 @@ async def clear_session() -> dict[str, str]:
     with session_lock:
         session_items.clear()
     return {"message": "Session cleared."}
+
+
+@app.post("/api/remove-scan")
+async def remove_scan(payload: RemoveScanRequest) -> dict[str, object]:
+    normalized_qr = payload.qr_code.strip().upper()
+
+    with session_lock:
+        removed_record = None
+        for index, record in enumerate(session_items):
+            if record["Item Name"] == normalized_qr:
+                removed_record = session_items.pop(index)
+                break
+
+        if removed_record is None:
+            raise HTTPException(status_code=404, detail="Scanned tag not found in the current session.")
+
+        return {
+            "message": "Scan removed.",
+            "removed": True,
+            "record": removed_record,
+            "session_count": len(session_items),
+        }
 
 
 @app.get("/api/export-excel")
