@@ -12,6 +12,7 @@ const exportButton = document.getElementById("download-excel");
 const seenTags = new Set();
 let records = [];
 let socket = null;
+let peerCount = 0;
 
 function createSessionId() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -42,6 +43,19 @@ function notify(message, mode = "ok") {
 function setWsStatus(message, mode = "pending") {
   wsStatus.textContent = message;
   wsStatus.className = `status-pill ${mode}`;
+}
+
+function updatePresenceStatus() {
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    setWsStatus("Reconnecting...", "pending");
+    return;
+  }
+
+  if (peerCount >= 1) {
+    setWsStatus("Phone Connected", "online");
+  } else {
+    setWsStatus("Waiting for Phone", "pending");
+  }
 }
 
 function ping() {
@@ -145,12 +159,20 @@ function connectSocket(sessionId) {
   socket = new WebSocket(websocketUrl(sessionId));
 
   socket.addEventListener("open", () => {
-    setWsStatus("Connected", "online");
+    updatePresenceStatus();
   });
 
   socket.addEventListener("message", async (event) => {
     try {
       const payload = JSON.parse(event.data);
+      if (payload.type === "presence") {
+        const count = Number(payload.connection_count || 0);
+        // connection_count includes this laptop client, so peers are count-1.
+        peerCount = Math.max(0, count - 1);
+        updatePresenceStatus();
+        return;
+      }
+
       if (!payload.qr_code) {
         return;
       }
@@ -172,6 +194,7 @@ function connectSocket(sessionId) {
   });
 
   socket.addEventListener("close", () => {
+    peerCount = 0;
     setWsStatus("Reconnecting...", "pending");
     window.setTimeout(() => connectSocket(sessionId), 1500);
   });

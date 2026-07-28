@@ -80,6 +80,21 @@ async def broadcast_to_session(session_id: str, payload: dict[str, Any]) -> None
         await unregister_connection(session_id, connection)
 
 
+async def publish_presence(session_id: str) -> None:
+    async with connections_lock:
+        connection_count = len(active_connections.get(session_id, []))
+
+    await broadcast_to_session(
+        session_id,
+        {
+            "type": "presence",
+            "session_id": session_id,
+            "connection_count": connection_count,
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        },
+    )
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "index.html")
@@ -178,6 +193,7 @@ async def export_excel(session_id: str = Query(default="default")) -> StreamingR
 @app.websocket("/ws/{session_id}")
 async def ws_session_bridge(websocket: WebSocket, session_id: str) -> None:
     await register_connection(session_id, websocket)
+    await publish_presence(session_id)
     try:
         await websocket.send_json({
             "type": "connection_ack",
@@ -199,3 +215,4 @@ async def ws_session_bridge(websocket: WebSocket, session_id: str) -> None:
         pass
     finally:
         await unregister_connection(session_id, websocket)
+        await publish_presence(session_id)
