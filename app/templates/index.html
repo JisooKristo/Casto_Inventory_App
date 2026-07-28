@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Inventory Scanner</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://unpkg.com/html5-qrcode"></script>
+</head>
+<body class="clean-ui">
+  <main class="scanner-shell">
+    
+    <!-- Top Bar: Compact Status & Live Item Counter -->
+    <header class="status-bar">
+      <div class="status-indicator">
+        <span class="status-dot"></span>
+        <span id="scan-status" class="status idle">Ready</span>
+      </div>
+      <span id="session-count" class="badge">0 items</span>
+    </header>
+
+    <!-- Main Viewport: Camera Viewfinder takes primary focus -->
+    <section class="camera-container">
+      <div id="reader" class="reader"></div>
+      <div id="flash" class="flash hidden"></div>
+      
+      <!-- Custom Target Crosshair Overlay -->
+      <div class="viewfinder-overlay">
+        <div class="corner top-left"></div>
+        <div class="corner top-right"></div>
+        <div class="corner bottom-left"></div>
+        <div class="corner bottom-right"></div>
+        <div class="laser-line"></div>
+      </div>
+    </section>
+
+    <!-- Bottom Controls: Primary Action Buttons -->
+    <footer class="action-dock">
+      <button id="download-excel" class="btn primary">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        Export Excel
+      </button>
+      <button id="clear-session" class="btn secondary">Clear</button>
+    </footer>
+
+    <!-- Collapsible Recent Scans Tray with 5-item Pagination -->
+    <details class="scans-tray" open>
+      <summary class="tray-handle">
+        <span class="tray-title">Recent Scans</span>
+        <span class="chevron">▲</span>
+      </summary>
+      
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Tag</th>
+              <th>Device</th>
+              <th>Location</th>
+              <th>Date</th>
+              <th>Seq</th>
+            </tr>
+          </thead>
+          <tbody id="session-body"></tbody>
+        </table>
+      </div>
+
+      <!-- Pagination Controls (Fixed 5 Items per Page) -->
+      <div class="pagination-bar">
+        <button id="btn-prev" class="pg-btn" disabled>&larr; Back</button>
+        <span id="page-info" class="page-info">Page 1 of 1</span>
+        <button id="btn-next" class="pg-btn" disabled>Next &rarr;</button>
+      </div>
+    </details>
+
+  </main>
+
+  <script>
+    const scanStatus = document.getElementById('scan-status');
+    const flash = document.getElementById('flash');
+    const sessionBody = document.getElementById('session-body');
+    const sessionCount = document.getElementById('session-count');
+    const clearButton = document.getElementById('clear-session');
+    const downloadButton = document.getElementById('download-excel');
+
+    const btnPrev = document.getElementById('btn-prev');
+    const btnNext = document.getElementById('btn-next');
+    const pageInfo = document.getElementById('page-info');
+
+    let html5QrCode = null;
+    let isScanning = false;
+    
+    // Pagination & Records Management
+    const processedCodes = new Set();
+    let allRecords = [];
+    let currentPage = 1;
+    const PAGE_SIZE = 5;
+
+    function setStatus(message, mode = 'idle') {
+      scanStatus.textContent = message;
+      scanStatus.className = `status ${mode}`;
+      
+      const dot = document.querySelector('.status-dot');
+      if (dot) {
+        dot.className = `status-dot ${mode}`;
+      }
+    }
+
+    function triggerFeedback(text, mode = 'success') {
+      flash.textContent = text;
+      flash.className = `flash ${mode}`;
+      flash.classList.remove('hidden');
+      setTimeout(() => flash.classList.add('hidden'), 1100);
+    }
+
+    function beep() {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      const context = new AudioContext();
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+
+      oscillator.type = 'sine';
+      oscillator.frequency.value = 880;
+      gain.gain.value = 0.08;
+
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start();
+      setTimeout(() => {
+        oscillator.stop();
+        context.close();
+      }, 120);
+    }
+
+    function renderTable() {
+      sessionBody.innerHTML = '';
+      const totalItems = allRecords.length;
+      const totalPages = Math.ceil(totalItems / PAGE_SIZE) || 1;
+
+      // Ensure page bounds
+      if (currentPage > totalPages) currentPage = totalPages;
+      if (currentPage < 1) currentPage = 1;
+
+      // Slice exact 5 items
+      const start = (currentPage - 1) * PAGE_SIZE;
+      const end = start + PAGE_SIZE;
+      const pageItems = allRecords.slice(start, end);
+
+      if (pageItems.length === 0) {
+        sessionBody.innerHTML = `<tr><td colspan="5" class="empty-state">No tags scanned yet.</td></tr>`;
+      } else {
+        pageItems.forEach((record) => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td><strong class="tag-highlight">${record['Item Name']}</strong></td>
+            <td>${record['Device Type']}</td>
+            <td>${record.Location}</td>
+            <td>${record['Date Acquired']}</td>
+            <td><span class="seq-badge">#${record['Sequence Number']}</span></td>
+          `;
+          sessionBody.appendChild(row);
+        });
+      }
+
+      // Update UI counts
+      sessionCount.textContent = `${totalItems} item${totalItems === 1 ? '' : 's'}`;
+      pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+
+      btnPrev.disabled = currentPage <= 1;
+      btnNext.disabled = currentPage >= totalPages;
+    }
+
+    async function refreshSession() {
+      const response = await fetch('/api/session');
+      const data = await response.json();
+      allRecords = data.items.reverse();
+      processedCodes.clear();
+      allRecords.forEach(rec => processedCodes.add(rec['Item Name']));
+      currentPage = 1;
+      renderTable();
+    }
+
+    async function handleScanSuccess(decodedText) {
+      if (isScanning || processedCodes.has(decodedText)) {
+        if (processedCodes.has(decodedText) && !isScanning) {
+          triggerFeedback('Already Scanned', 'error');
+        }
+        return;
+      }
+      isScanning = true;
+      processedCodes.add(decodedText);
+      setStatus('Saving...', 'busy');
+
+      try {
+        const response = await fetch('/api/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ qr_code: decodedText })
+        });
+
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || 'Invalid Tag');
+        }
+
+        beep();
+        triggerFeedback('Scan Saved!', 'success');
+        
+        allRecords.unshift(payload.record);
+        currentPage = 1;
+        renderTable();
+
+        setStatus('Ready', 'success');
+      } catch (error) {
+        processedCodes.delete(decodedText);
+        triggerFeedback(error.message, 'error');
+        setStatus('Failed', 'error');
+      } finally {
+        setTimeout(() => {
+          isScanning = false;
+        }, 1000);
+      }
+    }
+
+    async function startScanner() {
+      html5QrCode = new Html5Qrcode('reader');
+      setStatus('Starting...', 'busy');
+
+      const cameras = await Html5Qrcode.getCameras();
+      if (!cameras || cameras.length === 0) {
+        throw new Error('No camera found.');
+      }
+
+      const rearCamera = cameras.find((camera) => /back|rear|environment/i.test(camera.label)) || cameras[0];
+
+      await html5QrCode.start(
+        rearCamera.id,
+        {
+          fps: 15,
+          qrbox: { width: 220, height: 220 },
+          disableFlip: true,
+        },
+        handleScanSuccess,
+        () => {}
+      );
+
+      setStatus('Ready', 'success');
+    }
+
+    btnPrev.addEventListener('click', () => {
+      if (currentPage > 1) {
+        currentPage--;
+        renderTable();
+      }
+    });
+
+    btnNext.addEventListener('click', () => {
+      const totalPages = Math.ceil(allRecords.length / PAGE_SIZE);
+      if (currentPage < totalPages) {
+        currentPage++;
+        renderTable();
+      }
+    });
+
+    clearButton.addEventListener('click', async () => {
+      if (!confirm('Are you sure you want to clear session tags?')) return;
+      await fetch('/api/clear-session', { method: 'POST' });
+      processedCodes.clear();
+      allRecords = [];
+      currentPage = 1;
+      renderTable();
+      triggerFeedback('Cleared', 'success');
+    });
+
+    downloadButton.addEventListener('click', () => {
+      window.location.href = '/api/export-excel';
+    });
+
+    window.addEventListener('DOMContentLoaded', async () => {
+      await refreshSession();
+      try {
+        await startScanner();
+      } catch (error) {
+        setStatus(error.message, 'error');
+        triggerFeedback(error.message, 'error');
+      }
+    });
+  </script>
+</body>
+</html>

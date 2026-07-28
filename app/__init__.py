@@ -1,0 +1,1 @@
+"""Inventory scanner application package."""
