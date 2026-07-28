@@ -8,6 +8,7 @@ let socket = null;
 let scanner = null;
 let isSending = false;
 const recent = new Set();
+let heartbeatTimer = null;
 
 function getSessionId() {
   const params = new URLSearchParams(window.location.search);
@@ -72,10 +73,36 @@ function connectSocket(sessionId) {
 
   socket.addEventListener("open", () => {
     setStatus("Connected to Laptop", "online");
+    socket.send(JSON.stringify({
+      type: "hello_mobile",
+      session_id: sessionId,
+      source: "mobile",
+      timestamp: new Date().toISOString(),
+    }));
+
+    if (heartbeatTimer) {
+      window.clearInterval(heartbeatTimer);
+    }
+
+    heartbeatTimer = window.setInterval(() => {
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        return;
+      }
+      socket.send(JSON.stringify({
+        type: "hello_mobile",
+        session_id: sessionId,
+        source: "mobile",
+        timestamp: new Date().toISOString(),
+      }));
+    }, 10000);
   });
 
   socket.addEventListener("close", () => {
     setStatus("Reconnecting...", "pending");
+    if (heartbeatTimer) {
+      window.clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
     window.setTimeout(() => connectSocket(sessionId), 1500);
   });
 

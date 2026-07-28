@@ -13,6 +13,7 @@ const seenTags = new Set();
 let records = [];
 let socket = null;
 let peerCount = 0;
+let peerHeartbeatTimeout = null;
 
 function createSessionId() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -56,6 +57,21 @@ function updatePresenceStatus() {
   } else {
     setWsStatus("Waiting for Phone", "pending");
   }
+}
+
+function markPhoneConnected() {
+  peerCount = Math.max(peerCount, 1);
+  updatePresenceStatus();
+
+  if (peerHeartbeatTimeout) {
+    window.clearTimeout(peerHeartbeatTimeout);
+  }
+
+  // If no mobile heartbeat or scan arrives for a while, move back to waiting.
+  peerHeartbeatTimeout = window.setTimeout(() => {
+    peerCount = 0;
+    updatePresenceStatus();
+  }, 25000);
 }
 
 function ping() {
@@ -159,6 +175,7 @@ function connectSocket(sessionId) {
   socket = new WebSocket(websocketUrl(sessionId));
 
   socket.addEventListener("open", () => {
+    setWsStatus("Connected to Server", "pending");
     updatePresenceStatus();
   });
 
@@ -173,8 +190,17 @@ function connectSocket(sessionId) {
         return;
       }
 
+      if (payload.type === "hello_mobile") {
+        markPhoneConnected();
+        return;
+      }
+
       if (!payload.qr_code) {
         return;
+      }
+
+      if (payload.source === "mobile") {
+        markPhoneConnected();
       }
 
       const qrCode = String(payload.qr_code).trim().toUpperCase();
@@ -195,6 +221,10 @@ function connectSocket(sessionId) {
 
   socket.addEventListener("close", () => {
     peerCount = 0;
+    if (peerHeartbeatTimeout) {
+      window.clearTimeout(peerHeartbeatTimeout);
+      peerHeartbeatTimeout = null;
+    }
     setWsStatus("Reconnecting...", "pending");
     window.setTimeout(() => connectSocket(sessionId), 1500);
   });
