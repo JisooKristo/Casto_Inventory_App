@@ -20,6 +20,13 @@ DEVICE_MAP = {
     "D": "Display/Monitor",
 }
 
+SERIAL_REQUIRED_DEVICE_TYPES = {
+    "Laptop",
+    "Mini PC",
+    "Display/Monitor",
+    "Headset",
+}
+
 # Matches 3 formats:
 # 1. Dated (4-digit sequence): CRA + Location + Device + MMYY (4 digits) + Sequence (4 digits)
 # 2. Dateless (5-digit sequence): CRA + Location + Device + Sequence (5 digits)
@@ -52,6 +59,7 @@ class ParsedAssetTag:
     device_type: str
     date_acquired: str
     sequence_number: str
+    serial_number: str = "N/A"
 
     def to_dict(self) -> dict[str, str]:
         return {
@@ -63,7 +71,12 @@ class ParsedAssetTag:
             "device_type": self.device_type,
             "date_acquired": self.date_acquired,
             "sequence_number": self.sequence_number,
+            "serial_number": self.serial_number,
         }
+
+
+def device_requires_serial_number(device_type: str) -> bool:
+    return device_type in SERIAL_REQUIRED_DEVICE_TYPES
 
 
 def parse_asset_tag(qr_code: str) -> ParsedAssetTag:
@@ -108,4 +121,5 @@ def parse_asset_tag(qr_code: str) -> ParsedAssetTag:
         device_type=DEVICE_MAP[device_type_code],
         date_acquired=date_acquired,
         sequence_number=sequence_number,
+        serial_number="N/A",
     )

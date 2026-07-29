@@ -14,7 +14,7 @@ from starlette.requests import Request
 from starlette.templating import Jinja2Templates
 
 from app.exporter import generate_excel_bytes
-from app.parser import parse_asset_tag
+from app.parser import device_requires_serial_number, parse_asset_tag
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -29,6 +29,7 @@ if STATIC_DIR.exists():
 
 session_lock = Lock()
 session_items_by_id: dict[str, list[dict[str, str]]] = {}
+pending_scan_by_session_id: dict[str, dict[str, str]] = {}
 
 connections_lock = asyncio.Lock()
 active_connections: dict[str, list[WebSocket]] = {}
@@ -42,10 +43,34 @@ class RemoveScanRequest(BaseModel):
     qr_code: str = Field(min_length=1)
 
 
+class CompleteScanRequest(BaseModel):
+    serial_number: str = Field(default="N/A")
+    skip_serial_number: bool = False
+
+
 def get_or_create_session_records(session_id: str) -> list[dict[str, str]]:
     if session_id not in session_items_by_id:
         session_items_by_id[session_id] = []
     return session_items_by_id[session_id]
+
+
+def build_session_record(parsed: Any, serial_number: str) -> dict[str, str]:
+    return {
+        "Item Name": getattr(parsed, "raw_qr_code"),
+        "Company": getattr(parsed, "company"),
+        "Location": getattr(parsed, "location"),
+        "Device Type": getattr(parsed, "device_type"),
+        "Serial Number": serial_number,
+        "serial_number": serial_number,
+        "Date Acquired": getattr(parsed, "date_acquired"),
+        "Sequence Number": getattr(parsed, "sequence_number"),
+        "Scan Timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+
+
+def normalize_serial_number(serial_number: str | None) -> str:
+    value = str(serial_number or "").strip().upper()
+    return value or "N/A"
 
 
 async def register_connection(session_id: str, websocket: WebSocket) -> None:
@@ -112,15 +137,28 @@ async def scan_item(payload: ScanRequest, session_id: str = Query(default="defau
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    record = {
-        "Item Name": parsed.raw_qr_code,
-        "Company": parsed.company,
-        "Location": parsed.location,
-        "Device Type": parsed.device_type,
-        "Date Acquired": parsed.date_acquired,
-        "Sequence Number": parsed.sequence_number,
-        "Scan Timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-    }
+    if device_requires_serial_number(parsed.device_type):
+        pending_scan = {
+            "Item Name": parsed.raw_qr_code,
+            "Company": parsed.company,
+            "Location": parsed.location,
+            "Device Type": parsed.device_type,
+            "Date Acquired": parsed.date_acquired,
+            "Sequence Number": parsed.sequence_number,
+        }
+
+        with session_lock:
+            pending_scan_by_session_id[session_id] = pending_scan
+
+        return {
+            "message": "Asset tag captured. Serial number required.",
+            "scan_status": "awaiting_serial_number",
+            "requires_serial_number": True,
+            "asset": pending_scan,
+            "session_id": session_id,
+        }
+
+    record = build_session_record(parsed, "N/A")
 
     with session_lock:
         session_items = get_or_create_session_records(session_id)
@@ -129,6 +167,37 @@ async def scan_item(payload: ScanRequest, session_id: str = Query(default="defau
 
     return {
         "message": "Scan recorded.",
+        "scan_status": "complete",
+        "requires_serial_number": False,
+        "record": record,
+        "session_id": session_id,
+        "session_count": session_count,
+    }
+
+
+@app.post("/api/complete-scan")
+async def complete_scan(payload: CompleteScanRequest, session_id: str = Query(default="default")) -> dict[str, object]:
+    with session_lock:
+        pending_scan = pending_scan_by_session_id.get(session_id)
+        if not pending_scan:
+            raise HTTPException(status_code=404, detail="No pending asset tag scan exists for this session.")
+
+        serial_number = "N/A" if payload.skip_serial_number else normalize_serial_number(payload.serial_number)
+        record = {
+            **pending_scan,
+            "Serial Number": serial_number,
+            "serial_number": serial_number,
+            "Scan Timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+
+        session_items = get_or_create_session_records(session_id)
+        session_items.append(record)
+        session_count = len(session_items)
+        del pending_scan_by_session_id[session_id]
+
+    return {
+        "message": "Scan completed.",
+        "scan_status": "complete",
         "record": record,
         "session_id": session_id,
         "session_count": session_count,
@@ -147,6 +216,7 @@ async def clear_session(session_id: str = Query(default="default")) -> dict[str,
     with session_lock:
         session_items = get_or_create_session_records(session_id)
         session_items.clear()
+        pending_scan_by_session_id.pop(session_id, None)
     return {"message": "Session cleared.", "session_id": session_id}
 
 

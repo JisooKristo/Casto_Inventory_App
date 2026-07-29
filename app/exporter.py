@@ -13,6 +13,7 @@ EXPORT_COLUMNS = [
     "Company",
     "Location",
     "Device Type",
+    "Serial Number",
     "Date Acquired",
     "Sequence Number",
     "Scan Timestamp",
@@ -20,7 +21,22 @@ EXPORT_COLUMNS = [
 
 
 def build_export_frame(records: list[dict[str, str]]) -> pd.DataFrame:
-    return pd.DataFrame(records, columns=EXPORT_COLUMNS)
+    normalized_records = []
+    for record in records:
+        normalized_records.append(
+            {
+                "Item Name": record.get("Item Name", "N/A"),
+                "Company": record.get("Company", "N/A"),
+                "Location": record.get("Location", "N/A"),
+                "Device Type": record.get("Device Type", "N/A"),
+                "Serial Number": record.get("Serial Number", record.get("serial_number", "N/A")),
+                "Date Acquired": record.get("Date Acquired", "N/A"),
+                "Sequence Number": record.get("Sequence Number", "N/A"),
+                "Scan Timestamp": record.get("Scan Timestamp", "N/A"),
+            }
+        )
+
+    return pd.DataFrame(normalized_records, columns=EXPORT_COLUMNS)
 
 
 def generate_excel_bytes(records: list[dict[str, str]]) -> bytes:

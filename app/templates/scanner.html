@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Casto Mobile Scanner</title>
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/style.css?v=20260730-serial" />
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 <body class="mobile-page">
@@ -17,21 +17,18 @@
     </header>
 
     <section class="mobile-card scanner-preview" id="scanner-preview-card">
-      <div id="reader" class="mobile-reader"></div>
-      <div id="toast" class="toast hidden"></div>
-    </section>
-
-    <section class="mobile-card camera-controls" id="camera-controls-card">
-      <div class="control-head">
-        <h2>Camera Quality</h2>
-        <span id="zoom-status" class="control-status">Auto</span>
+      <div class="scan-banner" aria-label="Scan steps">
+        <div class="scan-step active" id="scan-step-asset">Step 1: Scan Asset QR</div>
+        <div class="scan-step" id="scan-step-serial">Step 2: Scan Barcode S/N</div>
       </div>
-      <label class="control-row" for="zoom-range">
-        <span>Zoom</span>
-        <span id="zoom-value">1.0x</span>
-      </label>
-      <input id="zoom-range" type="range" min="1" max="1" step="0.1" value="1" disabled />
-      <p class="control-note">Uses browser-supported camera zoom when available. On unsupported phones, the scanner stays on auto.</p>
+      <p class="scan-prompt" id="scan-prompt">Scan the asset QR sticker to start the workflow.</p>
+      <div class="scan-actions scan-actions-top">
+        <button id="skip-serial" class="btn secondary skip-serial hidden" type="button">Skip Serial Number</button>
+      </div>
+      <div id="reader" class="mobile-reader"></div>
+      <div class="scan-actions">
+      </div>
+      <div id="toast" class="toast hidden"></div>
     </section>
 
     <section class="mobile-card">
@@ -43,6 +40,6 @@
     </section>
   </main>
 
-  <script src="/static/scanner.js"></script>
+  <script src="/static/scanner.js?v=20260730-serial"></script>
 </body>
 </html>

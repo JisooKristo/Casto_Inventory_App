@@ -96,7 +96,7 @@ function ping() {
 
 function renderRows() {
   if (records.length === 0) {
-    sessionBody.innerHTML = '<tr><td colspan="8" class="empty-state">Waiting for scans from mobile device...</td></tr>';
+    sessionBody.innerHTML = '<tr><td colspan="9" class="empty-state">Waiting for scans from mobile device...</td></tr>';
     sessionCount.textContent = "0";
     lastScan.textContent = "None";
     return;
@@ -109,6 +109,7 @@ function renderRows() {
       <td><strong>${record["Item Name"]}</strong></td>
       <td>${record.Company}</td>
       <td>${record["Device Type"]}</td>
+      <td>${record["Serial Number"] || record.serial_number || "N/A"}</td>
       <td>${record.Location}</td>
       <td>${record["Date Acquired"]}</td>
       <td>${record["Sequence Number"]}</td>
@@ -192,6 +193,25 @@ function connectSocket(sessionId) {
 
       if (payload.type === "hello_mobile") {
         markPhoneConnected();
+        return;
+      }
+
+      if (payload.type === "scan_completed" && payload.record) {
+        if (payload.source === "mobile") {
+          markPhoneConnected();
+        }
+
+        const record = payload.record;
+        const itemName = String(record["Item Name"] || "").trim().toUpperCase();
+        if (!itemName || seenTags.has(itemName)) {
+          return;
+        }
+
+        seenTags.add(itemName);
+        records.unshift(record);
+        renderRows();
+        ping();
+        notify(`Received ${itemName}`, "ok");
         return;
       }
 

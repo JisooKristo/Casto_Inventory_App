@@ -288,6 +288,45 @@ th {
   display: none;
 }
 
+.scan-banner {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.scan-step {
+  flex: 1 1 0;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #f5f8fc;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 10px 12px;
+  text-align: center;
+}
+
+.scan-step.active {
+  background: rgba(15, 118, 110, 0.12);
+  border-color: rgba(15, 118, 110, 0.28);
+  color: var(--primary-strong);
+}
+
+.scan-step.complete {
+  background: rgba(22, 101, 52, 0.11);
+  border-color: rgba(22, 101, 52, 0.24);
+  color: var(--ok);
+}
+
+.scan-prompt {
+  margin: 0 0 10px;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
 .mobile-page {
   min-height: 100vh;
   display: flex;
@@ -351,53 +390,25 @@ th {
   object-fit: cover;
 }
 
-.camera-controls {
-  display: grid;
-  gap: 10px;
-}
-
-.control-head {
+.scan-actions {
+  margin-top: 10px;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
 }
 
-.control-head h2 {
-  font-size: 0.98rem;
+.scan-actions-top {
+  margin-top: 0;
+  margin-bottom: 10px;
+  position: sticky;
+  top: 8px;
+  z-index: 3;
 }
 
-.control-status {
-  display: inline-flex;
-  align-items: center;
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: rgba(15, 118, 110, 0.1);
-  color: var(--primary-strong);
-  border: 1px solid rgba(15, 118, 110, 0.18);
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
-.control-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  color: var(--muted);
-  font-size: 0.88rem;
-}
-
-.camera-controls input[type="range"] {
+.skip-serial {
   width: 100%;
-  accent-color: var(--primary);
-}
-
-.control-note {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.8rem;
-  line-height: 1.45;
+  padding: 14px 16px;
+  font-size: 0.95rem;
+  border: 1px solid rgba(15, 118, 110, 0.24);
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.08);
 }
 
 .toast {
