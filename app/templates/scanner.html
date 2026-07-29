@@ -21,6 +21,19 @@
       <div id="toast" class="toast hidden"></div>
     </section>
 
+    <section class="mobile-card camera-controls" id="camera-controls-card">
+      <div class="control-head">
+        <h2>Camera Quality</h2>
+        <span id="zoom-status" class="control-status">Auto</span>
+      </div>
+      <label class="control-row" for="zoom-range">
+        <span>Zoom</span>
+        <span id="zoom-value">1.0x</span>
+      </label>
+      <input id="zoom-range" type="range" min="1" max="1" step="0.1" value="1" disabled />
+      <p class="control-note">Uses browser-supported camera zoom when available. On unsupported phones, the scanner stays on auto.</p>
+    </section>
+
     <section class="mobile-card">
       <h2>Manual Entry</h2>
       <div class="manual-row">

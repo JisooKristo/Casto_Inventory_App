@@ -2,6 +2,9 @@ const statusNode = document.getElementById("mobile-status");
 const sessionNode = document.getElementById("mobile-session");
 const formatsNode = document.getElementById("scan-formats");
 const previewCard = document.getElementById("scanner-preview-card");
+const zoomRange = document.getElementById("zoom-range");
+const zoomValue = document.getElementById("zoom-value");
+const zoomStatus = document.getElementById("zoom-status");
 const toastNode = document.getElementById("toast");
 const manualInput = document.getElementById("manual-input");
 const manualSend = document.getElementById("manual-send");
@@ -28,6 +31,8 @@ let isSending = false;
 const recent = new Set();
 let heartbeatTimer = null;
 let successTimer = null;
+let currentZoom = 1;
+let zoomCapabilities = null;
 
 function getSessionId() {
   const params = new URLSearchParams(window.location.search);
@@ -88,6 +93,36 @@ function pulsePreview() {
       previewCard.classList.remove("scan-success");
     }, 520);
   });
+}
+
+function setZoomUi(value, enabled = true) {
+  currentZoom = value;
+  if (zoomRange) {
+    zoomRange.value = String(value);
+  }
+  if (zoomValue) {
+    zoomValue.textContent = `${Number(value).toFixed(1)}x`;
+  }
+  if (zoomStatus) {
+    zoomStatus.textContent = enabled ? "Manual" : "Auto";
+  }
+}
+
+async function applyZoom(value) {
+  if (!scanner || !zoomCapabilities || !zoomCapabilities.zoom) {
+    return;
+  }
+
+  const minZoom = Number(zoomCapabilities.zoom.min ?? 1);
+  const maxZoom = Number(zoomCapabilities.zoom.max ?? minZoom);
+  const boundedZoom = Math.max(minZoom, Math.min(maxZoom, value));
+
+  try {
+    await scanner.applyVideoConstraints({ advanced: [{ zoom: boundedZoom }] });
+    setZoomUi(boundedZoom, true);
+  } catch (error) {
+    console.debug("Manual zoom adjustment failed:", error);
+  }
 }
 
 function websocketUrl(sessionId) {
@@ -177,17 +212,19 @@ function connectSocket(sessionId) {
 
 async function startCamera(sessionId) {
   scanner = new Html5Qrcode("reader");
-  const cameras = await Html5Qrcode.getCameras();
-  if (!cameras || cameras.length === 0) {
-    throw new Error("No camera detected on this device.");
-  }
-
-  const rear = cameras.find((camera) => /back|rear|environment/i.test(camera.label)) || cameras[0];
 
   await scanner.start(
-    rear.id,
     {
-      fps: 12,
+      facingMode: { ideal: "environment" },
+      width: { ideal: 1600 },
+      height: { ideal: 1200 },
+      aspectRatio: { ideal: 4 / 3 },
+      frameRate: { ideal: 24, max: 30 },
+      resizeMode: "none",
+      focusMode: { ideal: "continuous" },
+    },
+    {
+      fps: 10,
       qrbox: { width: 300, height: 160 },
       formatsToSupport: SUPPORTED_FORMATS,
       disableFlip: true,
@@ -195,6 +232,26 @@ async function startCamera(sessionId) {
     (decodedText) => sendScan(decodedText, sessionId),
     () => {}
   );
+
+  try {
+    zoomCapabilities = scanner.getRunningTrackCapabilities();
+    if (zoomCapabilities && zoomCapabilities.zoom && zoomRange) {
+      const minZoom = Number(zoomCapabilities.zoom.min ?? 1);
+      const maxZoom = Number(zoomCapabilities.zoom.max ?? minZoom);
+      const idealZoom = Math.max(minZoom, Math.min(maxZoom, 1.75));
+
+      zoomRange.disabled = false;
+      zoomRange.min = String(minZoom);
+      zoomRange.max = String(maxZoom);
+      zoomRange.step = maxZoom - minZoom > 2 ? "0.1" : "0.05";
+      setZoomUi(idealZoom, true);
+      await applyZoom(idealZoom);
+    } else if (zoomStatus) {
+      zoomStatus.textContent = "Auto";
+    }
+  } catch (error) {
+    console.debug("Camera zoom adjustment skipped:", error);
+  }
 
   setListeningState();
 }
@@ -222,6 +279,14 @@ window.addEventListener("DOMContentLoaded", async () => {
       manualInput.value = "";
     }
   });
+
+  if (zoomRange) {
+    zoomRange.addEventListener("input", async () => {
+      const value = Number(zoomRange.value || 1);
+      setZoomUi(value, true);
+      await applyZoom(value);
+    });
+  }
 
   try {
     await startCamera(sessionId);

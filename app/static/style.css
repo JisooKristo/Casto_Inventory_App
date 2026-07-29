@@ -351,6 +351,55 @@ th {
   object-fit: cover;
 }
 
+.camera-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.control-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.control-head h2 {
+  font-size: 0.98rem;
+}
+
+.control-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.1);
+  color: var(--primary-strong);
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.control-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.camera-controls input[type="range"] {
+  width: 100%;
+  accent-color: var(--primary);
+}
+
+.control-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
 .toast {
   margin-top: 10px;
   padding: 9px 12px;
