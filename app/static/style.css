@@ -97,6 +97,12 @@ h2 {
   border-color: rgba(15, 118, 110, 0.22);
 }
 
+.status-pill.listening {
+  color: #0f5132;
+  background: rgba(22, 101, 52, 0.11);
+  border-color: rgba(22, 101, 52, 0.24);
+}
+
 .status-pill.small {
   font-size: 0.76rem;
   padding: 6px 10px;
@@ -307,6 +313,13 @@ th {
   font-size: 1.3rem;
 }
 
+.scan-formats {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
 .mobile-card {
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid var(--line);
@@ -322,6 +335,16 @@ th {
   border-radius: 14px;
   overflow: hidden;
   background: #0f172a;
+}
+
+.scanner-preview {
+  transition: box-shadow 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+
+.scanner-preview.scan-success {
+  border-color: rgba(22, 101, 52, 0.45);
+  box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.12), var(--shadow);
+  transform: translateY(-1px);
 }
 
 .mobile-reader video {

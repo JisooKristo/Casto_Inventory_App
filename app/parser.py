@@ -39,6 +39,8 @@ QR_PATTERN = re.compile(
     r"$"
 )
 
+SERIAL_PATTERN = re.compile(r"^[A-Z0-9][A-Z0-9\-_/.:]{2,63}$")
+
 
 @dataclass(frozen=True)
 class ParsedAssetTag:
@@ -67,9 +69,22 @@ class ParsedAssetTag:
 def parse_asset_tag(qr_code: str) -> ParsedAssetTag:
     normalized = qr_code.strip().upper()
     match = QR_PATTERN.fullmatch(normalized)
+
     if not match:
-        raise ValueError(
-            "Invalid QR code format. Expected CRA + location + device + (MMYY + 4-digit seq, 5-digit seq, or 4-digit seq)."
+        if not SERIAL_PATTERN.fullmatch(normalized):
+            raise ValueError(
+                "Invalid scan code format. Expected a CRA asset tag or a serial number encoded in QR/barcode form."
+            )
+
+        return ParsedAssetTag(
+            raw_qr_code=normalized,
+            company="N/A",
+            location_code="N/A",
+            location="N/A",
+            device_type_code="N/A",
+            device_type="N/A",
+            date_acquired="N/A",
+            sequence_number="N/A",
         )
 
     location_code = match.group("location_code")

@@ -13,9 +13,10 @@
       <h1>Remote Barcode Scanner</h1>
       <p class="muted">Session <code id="mobile-session">------</code></p>
       <span id="mobile-status" class="status-pill small">Connecting...</span>
+      <p id="scan-formats" class="scan-formats">Listening for QR codes and 1D barcodes: QR, Code 128, Code 39, EAN-13, and UPC-A.</p>
     </header>
 
-    <section class="mobile-card">
+    <section class="mobile-card scanner-preview" id="scanner-preview-card">
       <div id="reader" class="mobile-reader"></div>
       <div id="toast" class="toast hidden"></div>
     </section>

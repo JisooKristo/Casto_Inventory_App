@@ -1,14 +1,33 @@
 const statusNode = document.getElementById("mobile-status");
 const sessionNode = document.getElementById("mobile-session");
+const formatsNode = document.getElementById("scan-formats");
+const previewCard = document.getElementById("scanner-preview-card");
 const toastNode = document.getElementById("toast");
 const manualInput = document.getElementById("manual-input");
 const manualSend = document.getElementById("manual-send");
+
+const SUPPORTED_FORMATS = [
+  Html5QrcodeSupportedFormats.QR_CODE,
+  Html5QrcodeSupportedFormats.CODE_128,
+  Html5QrcodeSupportedFormats.CODE_39,
+  Html5QrcodeSupportedFormats.CODE_93,
+  Html5QrcodeSupportedFormats.EAN_13,
+  Html5QrcodeSupportedFormats.EAN_8,
+  Html5QrcodeSupportedFormats.UPC_A,
+  Html5QrcodeSupportedFormats.UPC_E,
+  Html5QrcodeSupportedFormats.ITF,
+  Html5QrcodeSupportedFormats.CODABAR,
+  Html5QrcodeSupportedFormats.PDF_417,
+  Html5QrcodeSupportedFormats.DATA_MATRIX,
+  Html5QrcodeSupportedFormats.AZTEC,
+];
 
 let socket = null;
 let scanner = null;
 let isSending = false;
 const recent = new Set();
 let heartbeatTimer = null;
+let successTimer = null;
 
 function getSessionId() {
   const params = new URLSearchParams(window.location.search);
@@ -21,11 +40,54 @@ function setStatus(message, mode = "pending") {
   statusNode.className = `status-pill small ${mode}`;
 }
 
+function setListeningState() {
+  setStatus("Listening for QR + barcodes", "listening");
+  if (formatsNode) {
+    formatsNode.textContent = "Active scan modes: QR Code, Code 128, Code 39, Code 93, EAN-13, EAN-8, UPC-A, UPC-E, ITF, Codabar, PDF-417, Data Matrix, and Aztec.";
+  }
+}
+
 function showToast(message, mode = "ok") {
   toastNode.textContent = message;
   toastNode.className = `toast ${mode}`;
   toastNode.classList.remove("hidden");
   setTimeout(() => toastNode.classList.add("hidden"), 1200);
+}
+
+function beep() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) {
+    return;
+  }
+
+  const context = new AudioContext();
+  const oscillator = context.createOscillator();
+  const gainNode = context.createGain();
+  oscillator.type = "sine";
+  oscillator.frequency.value = 820;
+  gainNode.gain.value = 0.06;
+  oscillator.connect(gainNode);
+  gainNode.connect(context.destination);
+  oscillator.start();
+  window.setTimeout(() => {
+    oscillator.stop();
+    context.close();
+  }, 110);
+}
+
+function pulsePreview() {
+  if (!previewCard) {
+    return;
+  }
+
+  previewCard.classList.remove("scan-success");
+  window.clearTimeout(successTimer);
+  window.requestAnimationFrame(() => {
+    previewCard.classList.add("scan-success");
+    successTimer = window.setTimeout(() => {
+      previewCard.classList.remove("scan-success");
+    }, 520);
+  });
 }
 
 function websocketUrl(sessionId) {
@@ -61,6 +123,8 @@ function sendScan(qrCode, sessionId) {
   if (navigator.vibrate) {
     navigator.vibrate(100);
   }
+  beep();
+  pulsePreview();
   showToast(`Scanned: ${normalized}`, "ok");
   setTimeout(() => {
     isSending = false;
@@ -124,12 +188,15 @@ async function startCamera(sessionId) {
     rear.id,
     {
       fps: 12,
-      qrbox: { width: 250, height: 250 },
+      qrbox: { width: 300, height: 160 },
+      formatsToSupport: SUPPORTED_FORMATS,
       disableFlip: true,
     },
     (decodedText) => sendScan(decodedText, sessionId),
     () => {}
   );
+
+  setListeningState();
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
