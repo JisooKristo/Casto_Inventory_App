@@ -14,3 +14,4 @@ build/
 *.egg-info/
 .vercel
 .env*
+android/InventoryScanner/gradle/wrapper/gradle-wrapper.jar
