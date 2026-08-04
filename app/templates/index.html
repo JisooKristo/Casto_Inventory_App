@@ -6,6 +6,9 @@
   <title>Casto Inventory Dashboard</title>
   <link rel="stylesheet" href="/static/style.css?v=20260730-serial" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script>
+    window.__PAIRING_ORIGIN__ = {{ pairing_origin | tojson }};
+  </script>
 </head>
 <body class="dashboard-page">
   <main class="dashboard-shell">

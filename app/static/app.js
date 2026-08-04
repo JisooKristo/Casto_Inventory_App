@@ -258,7 +258,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   const sessionId = getSessionId();
   sessionIdNode.textContent = sessionId;
 
-  const scannerUrl = `${window.location.origin}/scanner?session=${encodeURIComponent(sessionId)}`;
+  const pairingOrigin = window.__PAIRING_ORIGIN__ || window.location.origin;
+  const scannerUrl = `${pairingOrigin}/scanner?session=${encodeURIComponent(sessionId)}`;
   mobileLink.textContent = scannerUrl;
   mobileLink.href = scannerUrl;
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import socket
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
@@ -73,6 +74,23 @@ def normalize_serial_number(serial_number: str | None) -> str:
     return value or "N/A"
 
 
+def get_pairing_origin(request: Request) -> str:
+    host = request.url.hostname or "127.0.0.1"
+    if host in {"localhost", "127.0.0.1", "0.0.0.0"}:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+                probe.connect(("8.8.8.8", 80))
+                host = probe.getsockname()[0]
+        except OSError:
+            host = "127.0.0.1"
+
+    port = request.url.port
+    scheme = request.url.scheme
+    if port in (80, 443, None):
+        return f"{scheme}://{host}"
+    return f"{scheme}://{host}:{port}"
+
+
 async def register_connection(session_id: str, websocket: WebSocket) -> None:
     await websocket.accept()
     async with connections_lock:
@@ -122,12 +140,17 @@ async def publish_presence(session_id: str) -> None:
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "index.html")
+    return templates.TemplateResponse(request, "index.html", {"request": request, "pairing_origin": get_pairing_origin(request)})
 
 
 @app.get("/scanner", response_class=HTMLResponse)
 async def scanner_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "scanner.html")
+
+
+@app.get("/api/pairing-origin")
+async def pairing_origin(request: Request) -> dict[str, str]:
+    return {"origin": get_pairing_origin(request)}
 
 
 @app.post("/api/scan")
