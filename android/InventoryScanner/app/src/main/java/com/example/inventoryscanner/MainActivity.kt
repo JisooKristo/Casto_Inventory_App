@@ -1,6 +1,7 @@
 package com.example.inventoryscanner
 
 import android.Manifest
+import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
 import android.os.VibrationEffect
@@ -36,6 +37,7 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
 import java.net.URI
+import kotlin.math.hypot
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -60,12 +62,14 @@ class MainActivity : AppCompatActivity() {
     private var sessionId: String? = null
     private var baseUrl: String? = null
     private var isProcessing = false
+    private var activeScanValue: String? = null
     private var reconnectJob: Job? = null
     private var heartbeatJob: Job? = null
     private var cameraProvider: ProcessCameraProvider? = null
     private var camera: Camera? = null
     private var barcodeScanner: BarcodeScanner? = null
     private var pendingAsset: JSONObject? = null
+    private val scannedCodes = mutableSetOf<String>()
 
     private val requestCameraPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -115,21 +119,31 @@ class MainActivity : AppCompatActivity() {
             skipButton.visibility = View.GONE
             statusText.text = "Waiting for pairing"
             sessionText.text = "Session: --"
+            barcodeScanner = buildScanner(isSerialStep = false)
+            findViewById<View>(R.id.scanGuide).visibility = View.VISIBLE
+            findViewById<View>(R.id.scanCross).visibility = View.VISIBLE
+            findViewById<View>(R.id.scanCross).bringToFront()
             return
         }
 
         when (currentStep) {
             Step.ASSET -> {
-                promptText.text = "Step 1: Scan the asset QR tag"
+                promptText.text = "Step 1: Center the asset QR tag on the crosshair"
                 skipButton.visibility = View.GONE
                 statusText.text = "Ready to scan"
                 barcodeScanner = buildScanner(isSerialStep = false)
+                findViewById<View>(R.id.scanGuide).visibility = View.VISIBLE
+                findViewById<View>(R.id.scanCross).visibility = View.VISIBLE
+                findViewById<View>(R.id.scanCross).bringToFront()
             }
             Step.SERIAL -> {
-                promptText.text = "Step 2: Scan the serial barcode"
+                promptText.text = "Step 2: Align the serial barcode on the crosshair"
                 skipButton.visibility = View.VISIBLE
                 statusText.text = "Serial scan"
                 barcodeScanner = buildScanner(isSerialStep = true)
+                findViewById<View>(R.id.scanGuide).visibility = View.VISIBLE
+                findViewById<View>(R.id.scanCross).visibility = View.VISIBLE
+                findViewById<View>(R.id.scanCross).bringToFront()
             }
         }
     }
@@ -178,7 +192,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun processImage(imageProxy: ImageProxy) {
-        if (isProcessing || sessionId == null || barcodeScanner == null) {
+        if (isProcessing || activeScanValue != null || barcodeScanner == null) {
             imageProxy.close()
             return
         }
@@ -190,7 +204,7 @@ class MainActivity : AppCompatActivity() {
             barcodeScanner?.process(inputImage)
                 ?.addOnSuccessListener { barcodes ->
                     imageProxy.close()
-                    val barcode = barcodes.firstOrNull()
+                    val barcode = selectTargetBarcode(barcodes, imageProxy.width, imageProxy.height)
                     if (barcode != null) {
                         handleDecoded(barcode)
                     }
@@ -206,14 +220,122 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun selectTargetBarcode(barcodes: List<Barcode>, imageWidth: Int, imageHeight: Int): Barcode? {
+        val focusFrame = focusFrameRect(imageWidth, imageHeight)
+        val expectedFormats = expectedFormatsForCurrentStep()
+
+        return barcodes
+            .asSequence()
+            .filter { barcode ->
+                val value = barcode.rawValue?.trim().orEmpty()
+                value.isNotBlank() && expectedFormats.contains(barcode.format) && !isAlreadyHandled(value)
+            }
+            .mapNotNull { barcode ->
+                val bounds = barcode.boundingBox ?: return@mapNotNull null
+                val isPairingStep = sessionId == null
+                if (!isPairingStep) {
+                    val intersection = Rect.intersects(focusFrame, bounds)
+                    if (!intersection) {
+                        return@mapNotNull null
+                    }
+                }
+
+                val distance = hypot(
+                    bounds.exactCenterX().toDouble() - focusFrame.exactCenterX().toDouble(),
+                    bounds.exactCenterY().toDouble() - focusFrame.exactCenterY().toDouble()
+                )
+
+                val area = bounds.width().toDouble() * bounds.height().toDouble()
+                val overlapScore = if (area <= 0.0) Double.MAX_VALUE else distance - (area / 100_000.0)
+
+                ScoredBarcode(barcode, overlapScore)
+            }
+            .minByOrNull { it.distance }
+            ?.barcode
+    }
+
+    private fun normalizeScanValue(value: String): String {
+        return value.trim().uppercase()
+    }
+
+    private fun isAlreadyHandled(value: String): Boolean {
+        val normalized = normalizeScanValue(value)
+        return normalized in scannedCodes || activeScanValue == normalized
+    }
+
+    private fun beginScan(value: String): Boolean {
+        val normalized = normalizeScanValue(value)
+        if (normalized in scannedCodes) {
+            showAlreadyScanned()
+            return false
+        }
+        if (activeScanValue == normalized) {
+            return false
+        }
+        activeScanValue = normalized
+        return true
+    }
+
+    private fun finishScan(success: Boolean, value: String? = null) {
+        if (success && value != null) {
+            scannedCodes.add(normalizeScanValue(value))
+        }
+        activeScanValue = null
+    }
+
+    private fun markScanned(value: String) {
+        scannedCodes.add(normalizeScanValue(value))
+    }
+
+    private fun showAlreadyScanned() {
+        lifecycleScope.launch {
+            showToast("Already scanned")
+        }
+    }
+
+    private fun expectedFormatsForCurrentStep(): Set<Int> {
+        return if (sessionId == null || currentStep == Step.ASSET) {
+            setOf(Barcode.FORMAT_QR_CODE)
+        } else {
+            setOf(
+                Barcode.FORMAT_CODE_128,
+                Barcode.FORMAT_CODE_39,
+                Barcode.FORMAT_EAN_13,
+                Barcode.FORMAT_EAN_8,
+                Barcode.FORMAT_UPC_A,
+                Barcode.FORMAT_UPC_E,
+                Barcode.FORMAT_ITF,
+                Barcode.FORMAT_CODABAR
+            )
+        }
+    }
+
+    private fun focusFrameRect(imageWidth: Int, imageHeight: Int): Rect {
+        val frameWidth = (imageWidth * 0.88f).toInt().coerceAtMost(imageWidth)
+        val frameHeight = if (sessionId == null || currentStep == Step.ASSET) {
+            (imageHeight * 0.42f).toInt().coerceAtMost(imageHeight)
+        } else {
+            (imageHeight * 0.12f).toInt().coerceAtMost(imageHeight)
+        }
+        val left = ((imageWidth - frameWidth) / 2f).toInt().coerceAtLeast(0)
+        val top = ((imageHeight - frameHeight) / 2f).toInt().coerceAtLeast(0)
+        return Rect(left, top, left + frameWidth, top + frameHeight)
+    }
+
     private fun handleDecoded(barcode: Barcode) {
         val value = barcode.rawValue?.trim().orEmpty()
         if (value.isBlank()) return
+
+        if (!beginScan(value)) {
+            return
+        }
 
         if (sessionId == null) {
             val parsedSession = parseSessionFromUrl(value)
             if (parsedSession != null) {
                 pairWithSession(parsedSession.first, parsedSession.second)
+            } else {
+                finishScan(false)
             }
             return
         }
@@ -240,6 +362,8 @@ class MainActivity : AppCompatActivity() {
     private fun pairWithSession(newSessionId: String, newBaseUrl: String) {
         sessionId = newSessionId
         baseUrl = newBaseUrl
+        scannedCodes.clear()
+        activeScanValue = null
         pairingView.visibility = View.GONE
         scanView.visibility = View.VISIBLE
         sessionText.text = "Connected to session $sessionId"
@@ -319,21 +443,28 @@ class MainActivity : AppCompatActivity() {
         client.newCall(request).execute().use { response ->
             val payload = JSONObject(response.body?.string() ?: "{}")
             if (!response.isSuccessful) {
-                lifecycleScope.launch { showToast(payload.optString("detail", "Invalid scan")) }
+                lifecycleScope.launch {
+                    finishScan(false)
+                    showToast(payload.optString("detail", "Invalid scan"))
+                }
                 return@withContext
             }
             if (payload.optBoolean("requires_serial_number")) {
-                pendingAsset = payload.optJSONObject("asset")
-                currentStep = Step.SERIAL
                 lifecycleScope.launch {
+                    markScanned(value)
+                    pendingAsset = payload.optJSONObject("asset")
+                    currentStep = Step.SERIAL
                     updateUiForStep()
                     showToast("Asset tag captured. Now scan serial number")
+                    finishScan(true, value)
                 }
             } else {
                 lifecycleScope.launch {
+                    markScanned(value)
                     completeSuccess(payload.optJSONObject("record"))
                     currentStep = Step.ASSET
                     updateUiForStep()
+                    finishScan(true, value)
                 }
             }
         }
@@ -351,14 +482,19 @@ class MainActivity : AppCompatActivity() {
         client.newCall(request).execute().use { response ->
             val payload = JSONObject(response.body?.string() ?: "{}")
             if (!response.isSuccessful) {
-                lifecycleScope.launch { showToast(payload.optString("detail", "Serial scan failed")) }
+                lifecycleScope.launch {
+                    finishScan(false)
+                    showToast(payload.optString("detail", "Serial scan failed"))
+                }
                 return@withContext
             }
             lifecycleScope.launch {
+                markScanned(value)
                 pendingAsset = null
                 completeSuccess(payload.optJSONObject("record"))
                 currentStep = Step.ASSET
                 updateUiForStep()
+                finishScan(true, value)
             }
         }
     }
@@ -373,14 +509,19 @@ class MainActivity : AppCompatActivity() {
             client.newCall(request).execute().use { response ->
                 val payload = JSONObject(response.body?.string() ?: "{}")
                 if (!response.isSuccessful) {
-                    lifecycleScope.launch { showToast(payload.optString("detail", "Skip failed")) }
+                    lifecycleScope.launch {
+                        finishScan(false)
+                        showToast(payload.optString("detail", "Skip failed"))
+                    }
                     return@launch
                 }
                 lifecycleScope.launch {
+                    markScanned("N/A")
                     pendingAsset = null
                     completeSuccess(payload.optJSONObject("record"))
                     currentStep = Step.ASSET
                     updateUiForStep()
+                    finishScan(true, "N/A")
                 }
             }
         }
@@ -421,6 +562,11 @@ class MainActivity : AppCompatActivity() {
             vibrator.vibrate(120)
         }
     }
+
+    private data class ScoredBarcode(
+        val barcode: Barcode,
+        val distance: Double,
+    )
 
     private enum class Step { ASSET, SERIAL }
 }
