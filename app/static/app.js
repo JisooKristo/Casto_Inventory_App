@@ -14,43 +14,6 @@ let records = [];
 let socket = null;
 let peerCount = 0;
 let peerHeartbeatTimeout = null;
-let isHydrating = true;
-
-function storageKey(sessionId) {
-  return `casto_session_items_${sessionId}`;
-}
-
-function readCachedRecords(sessionId) {
-  try {
-    const raw = window.localStorage.getItem(storageKey(sessionId));
-    if (!raw) {
-      return [];
-    }
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (_error) {
-    return [];
-  }
-}
-
-function writeCachedRecords(sessionId, nextRecords) {
-  try {
-    window.localStorage.setItem(storageKey(sessionId), JSON.stringify(nextRecords));
-  } catch (_error) {
-    // Ignore storage quota or privacy-mode failures and fall back to the API.
-  }
-}
-
-function setRecords(nextRecords, sessionId) {
-  records = nextRecords.slice();
-  if (sessionId) {
-    writeCachedRecords(sessionId, records);
-  }
-  seenTags.clear();
-  for (const record of records) {
-    seenTags.add(record["Item Name"]);
-  }
-}
 
 function createSessionId() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -132,13 +95,6 @@ function ping() {
 }
 
 function renderRows() {
-  if (isHydrating) {
-    sessionBody.innerHTML = '<tr><td colspan="9" class="empty-state">Restoring saved scans...</td></tr>';
-    sessionCount.textContent = String(records.length);
-    lastScan.textContent = records.length > 0 ? records[0]["Item Name"] : "Loading...";
-    return;
-  }
-
   if (records.length === 0) {
     sessionBody.innerHTML = '<tr><td colspan="9" class="empty-state">Waiting for scans from mobile device...</td></tr>';
     sessionCount.textContent = "0";
@@ -170,19 +126,13 @@ function renderRows() {
 }
 
 async function loadSession(sessionId) {
-  try {
-    const response = await fetch(`/api/session?session_id=${encodeURIComponent(sessionId)}`);
-    const payload = await response.json();
-    const serverRecords = Array.isArray(payload.items) ? payload.items.slice().reverse() : [];
-    if (serverRecords.length > 0) {
-      setRecords(serverRecords, sessionId);
-    } else if (records.length === 0) {
-      setRecords([], sessionId);
-    }
-  } catch (_error) {
-    // Keep the cached rows visible if the backend session endpoint is temporarily unavailable.
+  const response = await fetch(`/api/session?session_id=${encodeURIComponent(sessionId)}`);
+  const payload = await response.json();
+  records = payload.items.slice().reverse();
+  seenTags.clear();
+  for (const record of records) {
+    seenTags.add(record["Item Name"]);
   }
-  isHydrating = false;
   renderRows();
 }
 
@@ -212,7 +162,6 @@ async function removeScan(sessionId, qrCode) {
 
   records = records.filter((record) => record["Item Name"] !== qrCode);
   seenTags.delete(qrCode);
-  writeCachedRecords(sessionId, records);
   renderRows();
   notify("Scan removed", "ok");
 }
@@ -258,9 +207,8 @@ function connectSocket(sessionId) {
           return;
         }
 
-          seenTags.add(itemName);
-          records.unshift(record);
-          writeCachedRecords(sessionId, records);
+        seenTags.add(itemName);
+        records.unshift(record);
         renderRows();
         ping();
         notify(`Received ${itemName}`, "ok");
@@ -283,7 +231,6 @@ function connectSocket(sessionId) {
       const record = await persistScan(sessionId, qrCode);
       seenTags.add(qrCode);
       records.unshift(record);
-      writeCachedRecords(sessionId, records);
       renderRows();
       ping();
       notify(`Received ${qrCode}`, "ok");
@@ -311,13 +258,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   const sessionId = getSessionId();
   sessionIdNode.textContent = sessionId;
 
-  records = readCachedRecords(sessionId);
-  seenTags.clear();
-  for (const record of records) {
-    seenTags.add(record["Item Name"]);
-  }
-  renderRows();
-
   const scannerUrl = `${window.location.origin}/scanner?session=${encodeURIComponent(sessionId)}`;
   mobileLink.textContent = scannerUrl;
   mobileLink.href = scannerUrl;
@@ -338,8 +278,8 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   clearButton.addEventListener("click", async () => {
     await fetch(`/api/clear-session?session_id=${encodeURIComponent(sessionId)}`, { method: "POST" });
-    setRecords([], sessionId);
-    isHydrating = false;
+    records = [];
+    seenTags.clear();
     renderRows();
     notify("Session cleared", "ok");
   });
