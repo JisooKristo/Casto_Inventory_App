@@ -471,6 +471,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private suspend fun submitSerialScan(value: String) = withContext(Dispatchers.IO) {
+        val deviceType = pendingAsset?.optString("Device Type", "")
+        val isMonitor = deviceType != null && deviceType.equals("Display/Monitor", ignoreCase = true)
+        val valueUpper = value.uppercase()
+        if (isMonitor && !valueUpper.any { it.isLetter() }) {
+            lifecycleScope.launch {
+                finishScan(false)
+                showToast("Monitor serial numbers must contain letters and numbers. Numbers-only barcodes are not allowed for monitors.")
+            }
+            return@withContext
+        }
+
         val body = JSONObject().apply {
             put("serial_number", value)
             put("skip_serial_number", false)

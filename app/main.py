@@ -15,7 +15,7 @@ from starlette.requests import Request
 from starlette.templating import Jinja2Templates
 
 from app.exporter import generate_excel_bytes
-from app.parser import device_requires_serial_number, parse_asset_tag
+from app.parser import contains_letter, device_requires_serial_number, parse_asset_tag
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -221,6 +221,20 @@ async def complete_scan(payload: CompleteScanRequest, session_id: str = Query(de
             raise HTTPException(status_code=404, detail="No pending asset tag scan exists for this session.")
 
         serial_number = "N/A" if payload.skip_serial_number else normalize_serial_number(payload.serial_number)
+
+        # Enforce alphanumeric serial numbers for monitors (letters + numbers only).
+        device_type = pending_scan.get("Device Type", "N/A")
+        if (
+            device_type == "Display/Monitor"
+            and not payload.skip_serial_number
+            and serial_number != "N/A"
+            and not contains_letter(serial_number)
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Monitor serial numbers must contain letters and numbers. Numbers-only barcodes are not allowed for monitors.",
+            )
+
         record = {
             **pending_scan,
             "Serial Number": serial_number,

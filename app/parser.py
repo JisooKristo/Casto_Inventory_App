@@ -79,6 +79,11 @@ def device_requires_serial_number(device_type: str) -> bool:
     return device_type in SERIAL_REQUIRED_DEVICE_TYPES
 
 
+def contains_letter(value: str) -> bool:
+    """Return True if the string contains at least one alphabetic character (A-Z)."""
+    return any(char.isalpha() for char in value)
+
+
 def parse_asset_tag(qr_code: str) -> ParsedAssetTag:
     normalized = qr_code.strip().upper()
     match = QR_PATTERN.fullmatch(normalized)

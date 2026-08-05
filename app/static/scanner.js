@@ -213,9 +213,22 @@ function celebrateCompletion(message) {
   showToast(message, "ok");
 }
 
+function isMonitorRequiringAlphanumericSerial() {
+  return pendingAsset && String(pendingAsset["Device Type"] || "").toUpperCase() === "DISPLAY/MONITOR";
+}
+
+function isLettersOnlyPresent(value) {
+  return /[A-Za-z]/.test(value);
+}
+
 async function completeSerialStep(sessionId, serialNumber, skipSerialNumber = false) {
   if (!pendingAsset) {
     throw new Error("Scan the asset QR code first.");
+  }
+
+  // Monitors require an alphanumeric serial (letters + numbers). Reject numbers-only barcodes.
+  if (!skipSerialNumber && isMonitorRequiringAlphanumericSerial() && !isLettersOnlyPresent(serialNumber)) {
+    throw new Error("Monitor serial numbers must contain letters and numbers. Numbers-only barcodes are not allowed for monitors.");
   }
 
   const payload = await postJson(`/api/complete-scan?session_id=${encodeURIComponent(sessionId)}`, {
