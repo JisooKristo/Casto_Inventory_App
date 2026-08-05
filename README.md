@@ -67,6 +67,14 @@ The dashboard uses a WebSocket endpoint at /ws/{session_id}. This connection is 
 
 The server broadcasts updates to all connected clients that belong to the same session. This allows the laptop dashboard to reflect scans immediately as they arrive from the phone scanner client.
 
+Real-time behavior details:
+
+- The backend emits `scan_completed` after a successful `/api/scan` or `/api/complete-scan` write.
+- The backend emits `scan_removed` after `/api/remove-scan`.
+- The backend emits `session_cleared` after `/api/clear-session`.
+
+Because updates are pushed from the backend after the record is saved, the laptop dashboard list updates without a manual browser refresh.
+
 ### 4.3 Session state
 
 The application stores scan records in memory in the server process. Records are grouped by session ID and are available while the server is running.

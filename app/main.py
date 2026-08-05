@@ -138,6 +138,19 @@ async def publish_presence(session_id: str) -> None:
     )
 
 
+async def publish_scan_completed(session_id: str, record: dict[str, str], source: str = "server") -> None:
+    await broadcast_to_session(
+        session_id,
+        {
+            "type": "scan_completed",
+            "session_id": session_id,
+            "source": source,
+            "record": record,
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        },
+    )
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "index.html", {"request": request, "pairing_origin": get_pairing_origin(request)})
@@ -188,6 +201,8 @@ async def scan_item(payload: ScanRequest, session_id: str = Query(default="defau
         session_items.append(record)
         session_count = len(session_items)
 
+    await publish_scan_completed(session_id, record)
+
     return {
         "message": "Scan recorded.",
         "scan_status": "complete",
@@ -218,6 +233,8 @@ async def complete_scan(payload: CompleteScanRequest, session_id: str = Query(de
         session_count = len(session_items)
         del pending_scan_by_session_id[session_id]
 
+    await publish_scan_completed(session_id, record)
+
     return {
         "message": "Scan completed.",
         "scan_status": "complete",
@@ -240,6 +257,16 @@ async def clear_session(session_id: str = Query(default="default")) -> dict[str,
         session_items = get_or_create_session_records(session_id)
         session_items.clear()
         pending_scan_by_session_id.pop(session_id, None)
+
+    await broadcast_to_session(
+        session_id,
+        {
+            "type": "session_cleared",
+            "session_id": session_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        },
+    )
+
     return {"message": "Session cleared.", "session_id": session_id}
 
 
@@ -258,13 +285,25 @@ async def remove_scan(payload: RemoveScanRequest, session_id: str = Query(defaul
         if removed_record is None:
             raise HTTPException(status_code=404, detail="Scanned tag not found in the current session.")
 
-        return {
-            "message": "Scan removed.",
-            "removed": True,
-            "record": removed_record,
+        remaining_count = len(session_items)
+
+    await broadcast_to_session(
+        session_id,
+        {
+            "type": "scan_removed",
             "session_id": session_id,
-            "session_count": len(session_items),
-        }
+            "record": removed_record,
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        },
+    )
+
+    return {
+        "message": "Scan removed.",
+        "removed": True,
+        "record": removed_record,
+        "session_id": session_id,
+        "session_count": remaining_count,
+    }
 
 
 @app.get("/api/export-excel")
@@ -299,7 +338,9 @@ async def ws_session_bridge(websocket: WebSocket, session_id: str) -> None:
             outgoing = {
                 "type": payload.get("type", "scan"),
                 "session_id": session_id,
+                "source": payload.get("source", "client"),
                 "qr_code": qr_value,
+                "record": payload.get("record"),
                 "timestamp": payload.get("timestamp")
                 or datetime.now(timezone.utc).isoformat(timespec="seconds"),
             }

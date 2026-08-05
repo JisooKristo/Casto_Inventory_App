@@ -204,28 +204,13 @@ async function restartCamera(sessionId, step, promptText) {
   await startCamera(sessionId, step, promptText);
 }
 
-function broadcastCompletedRecord(record, sessionId) {
-  if (!socket || socket.readyState !== WebSocket.OPEN) {
-    return;
-  }
-
-  socket.send(JSON.stringify({
-    type: "scan_completed",
-    source: "mobile",
-    session_id: sessionId,
-    timestamp: new Date().toISOString(),
-    record,
-  }));
-}
-
-function celebrateCompletion(record, sessionId, message) {
+function celebrateCompletion(message) {
   if (navigator.vibrate) {
     navigator.vibrate(100);
   }
   beep();
   pulsePreview();
   showToast(message, "ok");
-  broadcastCompletedRecord(record, sessionId);
 }
 
 async function completeSerialStep(sessionId, serialNumber, skipSerialNumber = false) {
@@ -240,8 +225,6 @@ async function completeSerialStep(sessionId, serialNumber, skipSerialNumber = fa
 
   pendingAsset = null;
   celebrateCompletion(
-    payload.record,
-    sessionId,
     skipSerialNumber ? "Serial number skipped. Scan completed." : "Serial number captured. Scan completed."
   );
   await restartCamera(sessionId, STEP_ASSET, "Scan the asset QR sticker to start the workflow.");
@@ -263,7 +246,7 @@ async function handleAssetStep(sessionId, decodedText) {
     return;
   }
 
-  celebrateCompletion(payload.record, sessionId, "Scan completed.");
+  celebrateCompletion("Scan completed.");
   await restartCamera(sessionId, STEP_ASSET, "Scan the asset QR sticker to start the workflow.");
 }
 

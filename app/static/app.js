@@ -196,6 +196,26 @@ function connectSocket(sessionId) {
         return;
       }
 
+      if (payload.type === "session_cleared") {
+        records = [];
+        seenTags.clear();
+        renderRows();
+        notify("Session cleared", "ok");
+        return;
+      }
+
+      if (payload.type === "scan_removed" && payload.record) {
+        const removedCode = String(payload.record["Item Name"] || "").trim().toUpperCase();
+        if (!removedCode) {
+          return;
+        }
+        records = records.filter((record) => record["Item Name"] !== removedCode);
+        seenTags.delete(removedCode);
+        renderRows();
+        notify(`Removed ${removedCode}`, "ok");
+        return;
+      }
+
       if (payload.type === "scan_completed" && payload.record) {
         if (payload.source === "mobile") {
           markPhoneConnected();
